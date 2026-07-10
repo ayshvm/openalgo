@@ -590,6 +590,17 @@ When debugging issues, **read `log/errors.jsonl` first**. Each line is a JSON ob
 
 All error logging uses `logger.exception()` (not `logger.error()` + manual traceback). This automatically captures the full traceback and routes it to the JSON error handler. Do NOT use `import traceback` / `traceback.print_exc()` / `traceback.format_exc()` — these bypass centralized logging.
 
+## This Deployment's Custom Strategies
+
+This local deployment is connected to **Zerodha only** (`.env` `VALID_BROKERS = 'zerodha'`, `REDIRECT_URL` set to `/zerodha/callback`) — broker credentials still need to be filled in by the user before the app can log in.
+
+Two custom scripts live in `strategies/examples/` (uploadable via `/python`, the Python Strategy Host):
+
+- **`iron_condor_daily.py`** — fully autonomous intraday iron condor on NIFTY + BANKNIFTY (sells OTM4 CE/PE, hedges with OTM6 CE/PE). Sizes itself against a configurable `TOTAL_CAPITAL`/`CAPITAL_ALLOCATION_FRACTION` via a live `client.margin()` check (not a fixed lot count), enters 9:20-10:30, exits on profit-target (50% of credit) / stop-loss (100% of credit) / 2:45pm forced exit, once per instrument per day. Defaults to `SANDBOX_MODE = True`; going live requires **both** flipping that flag **and** setting env var `LIVE_TRADING_CONFIRMED=YES` — a deliberate two-switch gate, not a suggestion to relax.
+- **`backtest_iron_condor_daily.py`** — EOD backtest of the same OTM6/OTM4 config against real NSE F&O bhavcopy settlement data (downloaded directly from `nsearchives.nseindia.com`, no broker connection needed). Important finding already surfaced to the user: **NIFTY backtests solidly (81% win rate over ~60 days), but BANKNIFTY does not** — since BANKNIFTY moved to monthly-only expiry in 2023, this "daily" setup usually holds options 2-4 weeks from expiry instead of near-dated ones, which produced both a net loss and a high rate (≈40%) of unreliable/illiquid-strike data days. Before running the live script on BANKNIFTY, this needs to be re-tuned or dropped — don't treat the current default config as validated for that instrument.
+
+Both scripts cache local run-state next to themselves (`.iron_condor_daily_state.json`, `.bhavcopy_cache/`, `backtest_results.json`) — all gitignored via `strategies/.gitignore`, not source.
+
 ## Troubleshooting Common Issues
 
 ### WebSocket Connection Issues
