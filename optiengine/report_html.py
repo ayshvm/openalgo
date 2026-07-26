@@ -13,7 +13,7 @@ from __future__ import annotations
 import html
 import json
 import os
-import statistics
+
 from datetime import datetime
 
 from .backtest.report import summarize
@@ -163,9 +163,14 @@ def _histogram(res: list[dict], w: int = 420, h: int = 200, bins: int = 21) -> s
 
 def _stat_tiles(s: dict, meta: dict) -> str:
     net = s.get("net_total", 0)
+    roc = s.get("return_on_capital_pct")
     tiles = [
-        ("Net P&L", _fmt(net), "good" if net > 0 else "bad"),
+        ("Total earnings (net)", _fmt(net), "good" if net > 0 else "bad"),
+        ("Capital used (peak)", _fmt(s.get("capital_peak")), ""),
+        ("Return on capital", f"{roc:+.1f}%" if roc is not None else "—",
+         "good" if (roc or 0) > 0 else "bad"),
         ("Per day held", _fmt(s.get("net_per_day_held")), "good" if s.get("net_per_day_held", 0) > 0 else "bad"),
+        ("Premium collected", _fmt(s.get("premium_collected")), ""),
         ("Win rate", f"{s.get('win_rate', 0)*100:.0f}%", ""),
         ("Profit factor", f"{s.get('profit_factor')}", "good" if (s.get("profit_factor") or 0) > 1 else "bad"),
         ("Trades", f"{s.get('trades', 0)}", ""),
@@ -174,6 +179,7 @@ def _stat_tiles(s: dict, meta: dict) -> str:
         ("CVaR worst 5%", _fmt(s.get("cvar_5pct")), "bad"),
         ("Gross P&L", _fmt(s.get("gross_total")), ""),
         ("Charges", _fmt(s.get("charges_total")), ""),
+        ("Capital per trade (median)", _fmt(s.get("capital_median")), ""),
     ]
     out = ['<div class="tiles">']
     for label, val, tone in tiles:
@@ -185,22 +191,76 @@ def _stat_tiles(s: dict, meta: dict) -> str:
 
 def _compare_table(runs: list[dict]) -> str:
     rows = ['<table class="tbl"><thead><tr><th>Run</th><th>Trades</th><th>Avg hold</th>'
-            '<th>Net P&amp;L</th><th>Per day held</th><th>Win rate</th><th>PF</th>'
+            '<th>Total earnings</th><th>Capital used</th><th>Return on capital</th>'
+            '<th>Per day held</th><th>Win rate</th><th>PF</th>'
             '<th>Max DD</th></tr></thead><tbody>']
     for si, r in enumerate(runs):
         s = r["summary"]
         light, dark = SERIES[si % len(SERIES)]
         cls = "good" if s.get("net_total", 0) > 0 else "bad"
+        roc = s.get("return_on_capital_pct")
         rows.append(
             f'<tr><td><span class="swatch" style="--l:{light};--d:{dark}"></span>'
             f'{_esc(r["meta"].get("label", "run"))}</td>'
             f'<td>{s.get("trades", 0)}</td><td>{s.get("avg_hold_days", 1)}d</td>'
             f'<td class="{cls}">{_fmt(s.get("net_total"))}</td>'
+            f'<td>{_fmt(s.get("capital_peak"))}</td>'
+            f'<td class="{cls}">{f"{roc:+.1f}%" if roc is not None else "—"}</td>'
             f'<td class="{cls}">{_fmt(s.get("net_per_day_held"))}</td>'
             f'<td>{s.get("win_rate", 0)*100:.0f}%</td><td>{s.get("profit_factor")}</td>'
             f'<td class="bad">{_fmt(s.get("max_drawdown"))}</td></tr>')
     rows.append("</tbody></table>")
     return "".join(rows)
+
+
+CAPITAL_NOTE = (
+    '<p class="note"><strong>Capital used</strong> is the peak structural max loss of a '
+    'single position — positions never overlap, so that is the most the book can lose at '
+    'once. It is a <em>floor</em>, not the real requirement: broker margin (SPAN + '
+    'exposure) is higher, so verify against Zerodha before sizing. <strong>Return on '
+    'capital</strong> is total earnings ÷ that peak, over the whole backtest window — '
+    'capital is recycled once per trade, which is why the percentage looks large on a '
+    'small base. Check the costs row below before reading any of it as profit.</p>')
+
+# Which meta keys describe the strategy, and how to display them.
+CONFIG_KEYS = [
+    ("short_offset", "Short strike", lambda v: f"OTM {v}" if v is not None else "—"),
+    ("hedge_offset", "Hedge strike", lambda v: f"OTM {v}" if v is not None else "—"),
+    ("hold_days", "Hold", lambda v: f"{v} trading day{'s' if (v or 1) != 1 else ''}"),
+    ("hold_to_expiry", "Hold to expiry", lambda v: "yes" if v else "no"),
+    ("lots", "Lots", lambda v: f"{v}"),
+    ("no_costs", "Costs applied", lambda v: "no — raw edge only" if v else "yes"),
+    ("spread_pct", "Assumed spread", lambda v: f"{v:.2%}" if v is not None else "—"),
+    ("days", "Lookback", lambda v: f"{v} calendar days"),
+]
+
+
+def _config_table(runs: list[dict]) -> str:
+    """What actually differs between the runs — differences highlighted.
+
+    Without this a comparison is unreadable: you see four equity curves and have
+    to guess which knob moved.
+    """
+    head = ['<table class="tbl"><thead><tr><th>Parameter</th>']
+    for si, r in enumerate(runs):
+        light, dark = SERIES[si % len(SERIES)]
+        head.append(f'<th><span class="swatch" style="--l:{light};--d:{dark}"></span>'
+                    f'{_esc(r["meta"].get("label", "run"))}</th>')
+    head.append("</tr></thead><tbody>")
+
+    body = []
+    for key, label, fmt in CONFIG_KEYS:
+        vals = [r["meta"].get(key) for r in runs]
+        if all(v is None for v in vals):
+            continue
+        differs = len({repr(v) for v in vals}) > 1
+        cells = "".join(
+            f'<td class="{"diff" if differs else ""}">{_esc(fmt(v))}</td>' for v in vals)
+        body.append(f'<tr><td>{_esc(label)}{" ●" if differs else ""}</td>{cells}</tr>')
+    body.append("</tbody></table>")
+    note = ('<p class="note">● marks the parameters that differ between runs — '
+            'everything else is held constant.</p>')
+    return "".join(head) + "".join(body) + note
 
 
 def _trade_table(res: list[dict], limit: int = 400) -> str:
@@ -272,6 +332,8 @@ h2{font-size:15px;margin:30px 0 10px;color:var(--ink)}
   background:var(--l);margin-right:7px;vertical-align:middle}
 .legend{display:flex;flex-wrap:wrap;gap:16px;margin:0 0 10px;font-size:12px;color:var(--ink2)}
 .note{color:var(--muted);font-size:12px;margin:8px 0 0}
+.tbl td.diff{color:var(--ink);font-weight:600}
+.tbl td.diff::after{content:"";display:inline-block}
 .empty{color:var(--muted)}
 details summary{cursor:pointer;color:var(--ink2);font-size:13px;padding:4px 0}
 @media (prefers-color-scheme:dark){:root:where(:not([data-theme=light])) .swatch,
@@ -295,9 +357,17 @@ def render(runs: list[dict], out_path: str, title: str = "OptiEngine backtest") 
     if len(runs) > 1:
         body.append("<h2>Comparison</h2><div class='card'>")
         body.append(_compare_table(runs))
+        body.append(CAPITAL_NOTE)
+        body.append("</div>")
+        body.append("<h2>What differs between these runs</h2><div class='card'>")
+        body.append(_config_table(runs))
         body.append("</div>")
     else:
         body.append(_stat_tiles(primary["summary"], primary["meta"]))
+        body.append(f"<div class='card'>{CAPITAL_NOTE}</div>")
+        body.append("<h2>Run configuration</h2><div class='card'>")
+        body.append(_config_table(runs))
+        body.append("</div>")
 
     body.append("<h2>Equity curve — cumulative net P&amp;L</h2><div class='card'>")
     body.append(_legend(runs))

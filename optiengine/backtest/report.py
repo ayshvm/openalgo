@@ -45,6 +45,15 @@ def summarize(results: list[DayResult], underlying: str) -> dict:
     # 2x a 1-day hold is still worse per day of capital deployed.
     days_held = sum(getattr(r, "held_days", 1) for r in rows)
 
+    # Capital actually put at risk. For a defined-risk structure the worst case is
+    # the structural max loss, and positions are non-overlapping (one at a time),
+    # so the peak single-position max loss is the capital the book must carry.
+    # NOTE: this is the floor. Broker margin (SPAN+exposure) is higher — verify
+    # against Zerodha before treating it as the real capital requirement.
+    risks = [r.max_loss_structural for r in rows]
+    capital_peak = max(risks) if risks else 0.0
+    premium_total = sum(r.net_credit_per_lot * r.lots for r in rows)
+
     return {
         "underlying": underlying,
         "days": len(rows),
@@ -53,6 +62,11 @@ def summarize(results: list[DayResult], underlying: str) -> dict:
         "avg_hold_days": round(days_held / len(rows), 1),
         "net_per_day_held": round(sum(net) / days_held) if days_held else 0,
         "gross_per_day_held": round(sum(gross) / days_held) if days_held else 0,
+        "capital_peak": round(capital_peak),
+        "capital_median": round(statistics.median(risks)) if risks else 0,
+        "premium_collected": round(premium_total),
+        "return_on_capital_pct": (round(100 * sum(net) / capital_peak, 1)
+                                  if capital_peak else None),
         "gross_total": round(sum(gross)),
         "charges_total": round(sum(charges)),
         "net_total": round(sum(net)),
