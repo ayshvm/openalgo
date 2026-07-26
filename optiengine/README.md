@@ -42,20 +42,52 @@ optiengine/
 4. **Regime selector** — the "right strategy for the day/week" brain, rules-based
    for now (trustworthy), VRP-driven.
 
-## Run it (on your machine, where NSE is reachable)
+## Run it
 
 ```bash
 cd openalgo
-uv run python -m optiengine.run_backtest --underlyings NIFTY --days 120
-uv run python -m optiengine.run_backtest --underlyings NIFTY BANKNIFTY --days 90 --lots 5
+python3.11 -m optiengine.run_backtest --underlyings NIFTY --days 365
+python3.11 -m optiengine.run_backtest --underlyings NIFTY --days 365 --hold-days 3
+python3.11 -m optiengine.run_backtest --underlyings NIFTY --days 365 --no-costs --html
 ```
 
-The first run downloads + caches bhavcopy into `optiengine/.bhavcopy_cache/`.
-Per-day results are written to `optiengine/backtest_out.json`.
+Useful flags: `--short-offset/--hedge-offset` (strike distance), `--lots`,
+`--spread-pct`, `--hold-days N` / `--hold-to-expiry`, `--no-costs`, `--html`.
 
-> Note: NSE's archive server is firewalled from Anthropic's cloud sandbox, so this
-> must be run on your own machine / server. The engine was validated on synthetic
-> chains; the data path is identical to your existing working downloader.
+The first run downloads + caches bhavcopy and the NSE index file into
+`optiengine/.bhavcopy_cache/` (~1.6 GB for a year; gitignored). Results go to
+`optiengine/backtest_out.json`.
+
+## View results in a browser
+
+```bash
+python3.11 -m optiengine.make_report --open                      # all runs found
+python3.11 -m optiengine.make_report /tmp/a.json /tmp/b.json --open   # compare runs
+```
+
+Writes a self-contained HTML file to `optiengine/reports/` — headline stats,
+equity curve, per-trade P&L, distribution, trade table, skip reasons. No network
+or build step; opens from `file://`. Passing multiple result files renders a
+comparison with the equity curves overlaid.
+
+## Findings so far (NIFTY, 240 trading days to Jul-2026)
+
+1. **Strike selection must anchor on the index OPEN.** The F&O bhavcopy
+   `UndrlygPric` column is the day's CLOSE. Centring strikes on it while entering
+   at the open leaks the outcome into the trade: it produced a 72% win rate with
+   avg win > avg loss — a shape no defined-risk seller gets. Fixing it flipped the
+   same 240 days from +₹136,688 to −₹67,913 per lot.
+2. **The same-day iron condor has no edge after costs.** Per lot per day:
+   frictionless edge ≈ +₹108, slippage ≈ −₹185, charges ≈ −₹211 → net ≈ −₹287.
+   Friction is ~3.7× the raw edge. Every strike configuration from OTM2/4 to
+   OTM10/12 loses money.
+3. **Holding longer does not rescue it.** Costs amortize over more days (the loss
+   per day held shrinks from −₹132 to −₹49), but the raw edge per day of capital
+   decays faster than the saving — ₹184/day held at a 1-day hold vs ₹62 at 5 days,
+   with drawdown roughly doubling. Nothing tested reaches positive.
+4. **Liquidity is not the constraint.** The thinnest leg (OTM6 PE) trades ~21,500
+   lots/day, so a risk-capped position is ~1% participation. The binding
+   constraint is the risk budget, not depth.
 
 ## Honesty about data limits (unchanged from your original stance)
 
