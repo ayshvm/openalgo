@@ -1,0 +1,8 @@
+# Downloaded NSE bhavcopy + index files (regenerable, ~1.6 GB)
+.bhavcopy_cache/
+
+# Generated backtest results and HTML reports
+backtest_out*.json
+reports/
+
+__pycache__/

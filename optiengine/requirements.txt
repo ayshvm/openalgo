@@ -1,0 +1,5 @@
+# Phase 0 is pure standard library (urllib, csv, zipfile, dataclasses) — no deps.
+# Listed here for later phases:
+#   PyYAML        # to load config/strategies.yaml (live executor, Phase 1)
+#   openalgo      # OpenAlgo Python SDK — live executor (Phase 2); already in the repo
+#   duckdb        # intraday snapshot capture (Phase 0.5); ships with OpenAlgo/Historify

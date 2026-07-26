@@ -1,0 +1,20 @@
+# Which strategies are live and on which instrument. Phase 0 uses this only for
+# the backtest/selector; the live executor (Phase 2) will read the same file.
+strategies:
+  - name: Intraday Iron Condor
+    module: optiengine.strategies.iron_condor
+    enabled: true
+    instruments: [NIFTY]        # SENSEX added in Phase 3; BANKNIFTY is monthly-only
+    params:
+      short_offset: 4
+      hedge_offset: 6
+      target_fraction: 0.5
+      stop_multiple: 1.0
+
+# Risk limits (consumed by risk/guardian.py in Phase 1+). Set YOUR numbers.
+risk:
+  max_capital: 10000000          # ₹10 Cr peak
+  deploy_fraction: 0.6           # never margin past 60%
+  daily_loss_cap_pct: 1.5        # halt + flatten for the day at -1.5% of deployed
+  per_structure_max_loss_pct: 0.5
+  max_orders_per_second: 8       # stay under SEBI's 10 OPS retail threshold
