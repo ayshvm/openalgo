@@ -38,6 +38,8 @@ def main():
                     help="trading days to hold (1 = same-day round trip)")
     ap.add_argument("--hold-to-expiry", action="store_true",
                     help="hold until the expiry day's close (overrides --hold-days)")
+    ap.add_argument("--html", nargs="?", const="auto", default=None,
+                    help="also write an HTML report (optional path)")
     ap.add_argument("--no-costs", action="store_true",
                     help="zero out charges AND slippage — measures the raw structural "
                          "edge only. Use when the real cost depends on a rebalancing "
@@ -77,10 +79,28 @@ def main():
         results, skips, day_count = run(strategy, cfg)
     print_report(strategy.name, results, skips, day_count, args.underlyings)
 
+    meta = {
+        "strategy": strategy.name,
+        "label": f"OTM{args.short_offset}/{args.hedge_offset} · {mode}"
+                 + (" · no-costs" if args.no_costs else f" · spread {args.spread_pct:.2%}")
+                 + f" · {args.lots} lot",
+        "underlyings": args.underlyings,
+        "days": args.days, "lots": args.lots,
+        "short_offset": args.short_offset, "hedge_offset": args.hedge_offset,
+        "hold_days": args.hold_days, "hold_to_expiry": args.hold_to_expiry,
+        "no_costs": args.no_costs, "spread_pct": args.spread_pct,
+        "days_scanned": day_count,
+    }
     with open(args.out, "w") as f:
-        json.dump({"results": to_dicts(results),
+        json.dump({"meta": meta,
+                   "results": to_dicts(results),
                    "skips": [s.__dict__ for s in skips]}, f, indent=2)
     print(f"Per-day results -> {args.out}")
+
+    if args.html:
+        from .report_html import render_from_files
+        path = render_from_files([args.out], args.html)
+        print(f"HTML report      -> {path}")
 
 
 if __name__ == "__main__":
