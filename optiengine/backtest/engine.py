@@ -38,6 +38,8 @@ class DayResult:
     net_pnl: float
     max_loss_structural: float
     won: bool
+    exit_date: str = ""      # multi-day holds: when the position was closed
+    held_days: int = 1       # trading days held (1 = same-day round trip)
 
 
 @dataclass

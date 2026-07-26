@@ -41,9 +41,18 @@ def summarize(results: list[DayResult], underlying: str) -> dict:
     expectancy = sum(net) / len(net)
     profit_factor = (sum(wins) / abs(sum(losses))) if losses and sum(losses) != 0 else float("inf")
 
+    # Normalizer for comparing holding periods fairly: a 5-day hold that earns
+    # 2x a 1-day hold is still worse per day of capital deployed.
+    days_held = sum(getattr(r, "held_days", 1) for r in rows)
+
     return {
         "underlying": underlying,
         "days": len(rows),
+        "trades": len(rows),
+        "days_held": days_held,
+        "avg_hold_days": round(days_held / len(rows), 1),
+        "net_per_day_held": round(sum(net) / days_held) if days_held else 0,
+        "gross_per_day_held": round(sum(gross) / days_held) if days_held else 0,
         "gross_total": round(sum(gross)),
         "charges_total": round(sum(charges)),
         "net_total": round(sum(net)),
@@ -75,7 +84,10 @@ def print_report(strategy_name: str, results: list[DayResult],
         print(f"    Charges:          ₹{s['charges_total']:>12,}  ({s['cost_drag_pct_of_gross']}% of gross)")
         print(f"    NET P&L:          ₹{s['net_total']:>12,}   <-- the real number")
         print(f"    Win rate:         {s['win_rate']*100:.0f}%   PF: {s['profit_factor']}")
-        print(f"    Expectancy/day:   ₹{s['expectancy_per_day']:>12,}")
+        print(f"    Expectancy/trade: ₹{s['expectancy_per_day']:>12,}  "
+              f"(avg hold {s['avg_hold_days']}d)")
+        print(f"    Per day held:     ₹{s['net_per_day_held']:>12,} net"
+              f"  |  ₹{s['gross_per_day_held']:,} gross   <-- compare holds on THIS")
         print(f"    Avg win/loss:     ₹{s['avg_win']:,} / ₹{s['avg_loss']:,}")
         print(f"    Best/Worst day:   ₹{s['best_day']:,} / ₹{s['worst_day']:,}")
         print(f"    CVaR (worst 5%):  ₹{s['cvar_5pct']:,}")

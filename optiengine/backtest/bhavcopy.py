@@ -66,7 +66,15 @@ class DayChain:
         return self.atm + offset * self.interval
 
     def quote_at_offset(self, offset: int, option_type: str) -> OptionQuote | None:
-        strike = self.strike_for_offset(offset)
+        return self.quote_at_strike(self.strike_for_offset(offset), option_type)
+
+    def quote_at_strike(self, strike: float, option_type: str) -> OptionQuote | None:
+        """Look up by ABSOLUTE strike.
+
+        Needed for multi-day holds: once a position is open its strikes are fixed,
+        so later days must be valued at those same strikes — not at whatever is
+        ATM-relative on that later day.
+        """
         row = self._by_key.get((round(strike, 2), option_type))
         if row is None:
             return None
@@ -217,6 +225,30 @@ def build_day_chain(rows: list[dict], underlying: str, trade_day: date,
     close_spot = float(opt_rows[0]["UndrlygPric"])  # diagnostics only, never for strikes
     chain = DayChain(underlying, expiry, spot, opt_rows)
     chain.close_spot = close_spot
+    return chain
+
+
+def build_chain_for_expiry(rows: list[dict], underlying: str, expiry: str,
+                           index_opens: dict[str, float] | None = None) -> DayChain | None:
+    """Chain for a SPECIFIC expiry (not the nearest one).
+
+    A multi-day hold stays in the expiry it entered; on later days the nearest
+    expiry may already have rolled, so we must pin the original one.
+    """
+    opt_rows = [r for r in rows
+                if r["TckrSymb"] == underlying and r["XpryDt"] == expiry
+                and r["FinInstrmTp"] == "IDO"]
+    if not opt_rows:
+        return None
+    spot = None
+    if index_opens:
+        spot = index_opens.get(INDEX_NAMES.get(underlying, "").lower())
+    if spot is None:
+        spot = spot_at_open(rows, underlying)
+    if spot is None:
+        return None
+    chain = DayChain(underlying, expiry, spot, opt_rows)
+    chain.close_spot = float(opt_rows[0]["UndrlygPric"])
     return chain
 
 
