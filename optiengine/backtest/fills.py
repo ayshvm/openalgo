@@ -41,3 +41,6 @@ class SlippageModel:
         if action.upper() == "BUY":
             return mid + slip          # pay up
         return max(0.05, mid - slip)   # receive less
+
+    # Alias used by engine/multiday (historical name).
+    fills_price = fill_price
