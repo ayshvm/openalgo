@@ -1,10 +1,27 @@
 # Which strategies are live and on which instrument. Phase 0 uses this only for
 # the backtest/selector; the live executor (Phase 2) will read the same file.
 strategies:
+  - name: Bear Call Spread
+    module: optiengine.strategies.credit_spread
+    enabled: true
+    instruments: [NIFTY]        # BANKNIFTY monthly-only: 0/379 configs profitable in sweep
+    params:
+      # Sweep winner (Jul-2025→Jul-2026, Zerodha costs): OTM4 short / wing4 / ~5d hold
+      short_offset: 4
+      wing_width: 4
+      target_fraction: 0.5
+      stop_multiple: 1.0
+  - name: Hedged Short Strangle
+    module: optiengine.strategies.short_strangle
+    enabled: true
+    instruments: [NIFTY]
+    params:
+      short_offset: 6
+      hedge_offset: 16
   - name: Intraday Iron Condor
     module: optiengine.strategies.iron_condor
-    enabled: true
-    instruments: [NIFTY]        # SENSEX added in Phase 3; BANKNIFTY is monthly-only
+    enabled: false              # no edge after costs in sweep
+    instruments: [NIFTY]
     params:
       short_offset: 4
       hedge_offset: 6
@@ -13,8 +30,9 @@ strategies:
 
 # Risk limits (consumed by risk/guardian.py in Phase 1+). Set YOUR numbers.
 risk:
-  max_capital: 10000000          # ₹10 Cr peak
+  max_capital: 100000000         # ₹10 Cr peak
   deploy_fraction: 0.6           # never margin past 60%
   daily_loss_cap_pct: 1.5        # halt + flatten for the day at -1.5% of deployed
   per_structure_max_loss_pct: 0.5
   max_orders_per_second: 8       # stay under SEBI's 10 OPS retail threshold
+  max_lots_liquidity: 200        # ~1% of OTM ADV; binding cap for narrow verticals

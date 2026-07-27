@@ -3,6 +3,7 @@
 
 # Generated backtest results and HTML reports
 backtest_out*.json
+sweep_out*.json
 reports/
 
 __pycache__/

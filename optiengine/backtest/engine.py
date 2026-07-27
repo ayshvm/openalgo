@@ -114,10 +114,11 @@ def simulate_day(strategy: Strategy, chain: DayChain, trade_day: date,
         (short_strikes if leg.action == Action.SELL else hedge_strikes).append(
             chain.strike_for_offset(leg.offset))
 
-    # Sanity: a vertical's credit can't be <= 0 or exceed the strike width.
+    # Sanity: a credit structure's credit can't be <= 0 or exceed wing width.
+    # Use min short↔hedge distance (works for condors, flies, and single verticals).
     width_points = 0.0
     if short_strikes and hedge_strikes:
-        width_points = abs(chain.strike_for_offset(legs[2].offset) - chain.strike_for_offset(legs[0].offset))
+        width_points = min(abs(h - s) for h in hedge_strikes for s in short_strikes)
     if net_credit_per_lot <= 0 or (width_points and net_credit_per_lot > width_points * lotsize):
         return SkipDay(trade_day.isoformat(), chain.underlying,
                        "unreliable credit (stale/illiquid leg price)")

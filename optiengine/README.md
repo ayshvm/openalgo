@@ -81,13 +81,35 @@ comparison with the equity curves overlaid.
    frictionless edge ≈ +₹108, slippage ≈ −₹185, charges ≈ −₹211 → net ≈ −₹287.
    Friction is ~3.7× the raw edge. Every strike configuration from OTM2/4 to
    OTM10/12 loses money.
-3. **Holding longer does not rescue it.** Costs amortize over more days (the loss
-   per day held shrinks from −₹132 to −₹49), but the raw edge per day of capital
+3. **Holding longer does not rescue the iron condor.** Costs amortize over more days
+   (the loss per day held shrinks from −₹132 to −₹49), but the raw edge per day of capital
    decays faster than the saving — ₹184/day held at a 1-day hold vs ₹62 at 5 days,
    with drawdown roughly doubling. Nothing tested reaches positive.
-4. **Liquidity is not the constraint.** The thinnest leg (OTM6 PE) trades ~21,500
+4. **Liquidity is not the constraint for ICs.** The thinnest leg (OTM6 PE) trades ~21,500
    lots/day, so a risk-capped position is ~1% participation. The binding
    constraint is the risk budget, not depth.
+5. **Grid sweep (758 configs, NIFTY+BANKNIFTY, Zerodha costs ON, Jul-2025→Jul-2026):**
+   - **97/758 configs net-positive at 1 lot — all on NIFTY. BANKNIFTY: 0 positives.**
+   - **Winner by sized P&L:** NIFTY Bear Call `OTM4 / wing4 / 5-day hold`
+     → +₹53k/lot, +₹74.5L at 200 lots, 77% WR, max DD ≈ −₹50L.
+   - **Runner-ups:** other NIFTY Bear Calls with 3–5 day holds and wings 3–4.
+   - **Hedged Strangle** (wide IC, e.g. OTM6/16 same-day) works at 1 lot and at size
+     for the widest wings; tighter hedges flip negative at 200 lots via impact.
+   - **Iron Condor / Iron Fly / Bull Put:** essentially dead after costs on this sample.
+   - **Regime warning:** Bear Call crush + Bull Put wipeout = the year had upward drift.
+     Do not treat BC as a universal edge — it is short-vol with a bullish bias that
+     matched this window. Live needs a regime filter (or pair BC with BP).
+   - **₹10 Cr sizing:** narrow verticals hit the **200-lot liquidity cap** long before
+     capital is exhausted (~₹25–30L structural risk). Excess capital stays idle unless
+     you run multiple uncorrelated books.
+
+Run the sweep yourself:
+
+```bash
+python3.11 -m optiengine.run_sweep --underlyings NIFTY BANKNIFTY --days 365 --html
+```
+
+Results: `optiengine/sweep_out.json`, HTML: `optiengine/reports/sweep.html`.
 
 ## Honesty about data limits (unchanged from your original stance)
 
