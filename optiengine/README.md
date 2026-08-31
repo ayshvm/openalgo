@@ -126,7 +126,73 @@ Charge rates in `charges.py` are dated (reviewed 2025) and configurable. STT on
 options sale rose to 0.10% on 1-Oct-2024; exchange txn charges get revised. Check
 them against a current Zerodha contract note before Phase 2.
 
-## Next (Phase 1)
+## Risk layer (Phase 1 — done)
 
-`live/` (executor + intraday evaluator against OpenAlgo API) and `risk/` (guardian
-+ kill switch). Config and limits already stubbed in `config/strategies.yaml`.
+`risk/` is the only module allowed to say yes to an order. It reads the `risk:`
+block of `config/strategies.yaml` — which until now was documentation, not
+control — and enforces it.
+
+```
+optiengine/risk/
+├── limits.py      # load + validate the risk: block; refuses to start on a bad config
+├── guardian.py    # pre-trade veto, intraday breach detection, book state
+└── killswitch.py  # flatten-all + halt that survives a restart
+```
+
+```python
+from optiengine.risk import Guardian, KillSwitch, ProposedEntry, load_limits
+
+guardian = Guardian(load_limits())
+verdict = guardian.check_entry(ProposedEntry(
+    underlying="NIFTY", lots=10, n_orders=4,
+    margin_required=1_000_000, structural_max_loss=250_000))
+if verdict:
+    guardian.open_structure(...)          # only after the Guardian allows it
+
+breach = guardian.mark_to_market({id(structure): unrealized_pnl})
+if breach and breach.flatten:
+    KillSwitch(guardian, executor).trip(breach.detail)
+```
+
+What it enforces, from your configured limits (₹10 Cr / 60% / 1.5% / 0.5% / 8 OPS
+/ 200 lots → **₹6 Cr deployable, ₹9,00,000 daily cap, ₹3,00,000 per structure**):
+
+- **Capital** — committed margin never exceeds `deploy_fraction` of `max_capital`
+- **Per-structure loss** — a single structure's worst case is capped
+- **Daily loss cap** — blocks new entries once reached, *and* blocks any entry
+  whose worst case would breach it; trips the kill switch when the open book
+  crosses it
+- **Liquidity** — the 200-lot ceiling, counted per instrument against what is
+  already on the book
+- **Order rate** — sliding one-second window kept under SEBI's 10 OPS threshold
+
+Three design stances worth knowing before you rely on it:
+
+1. **Fail closed.** Anything the Guardian cannot evaluate is a denial. A mark for
+   a structure it doesn't know about means the caller's view and its own have
+   diverged, so it halts rather than guessing.
+2. **The halt is persisted**, keyed by trading date. The situation that trips a
+   kill switch is exactly the one where a supervisor restarts the process — a
+   halt a crash-loop can clear is not a halt. Yesterday's halt does not carry in.
+3. **Flattening is best-effort and loud.** A leg that fails to close is recorded
+   and left visible with the halt still in force. Silently half-flattening a
+   hedged structure leaves a naked short, which is worse than the loss that
+   triggered it.
+
+`loss_cap_basis` decides what the two loss percentages are measured against:
+`deployable` (default — `max_capital × deploy_fraction`, a stable number known at
+9:15) or `peak_deployed` (the largest margin committed so far today, which is
+much stricter early in the session). This choice decides when the kill switch
+fires; set it deliberately.
+
+Tests run with no broker, no network and no market data:
+
+```bash
+python3.11 -m unittest optiengine.tests.test_risk
+```
+
+## Next (Phase 1, remaining)
+
+`live/` — executor + intraday evaluator against the OpenAlgo API, routing every
+order through `Guardian.check_entry()` and implementing the `Flattener` protocol
+that `killswitch.py` already expects.
