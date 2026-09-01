@@ -7,3 +7,6 @@ sweep_out*.json
 reports/
 
 __pycache__/
+
+# Persisted risk halt (session-local, keyed by trading date)
+.risk_halt_state.json
