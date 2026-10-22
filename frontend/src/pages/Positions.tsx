@@ -153,6 +153,9 @@ export default function Positions() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showStaleWarning, setShowStaleWarning] = useState(false)
+  const [closeAllOpen, setCloseAllOpen] = useState(false)
+  const [closeAllConfirmation, setCloseAllConfirmation] = useState('')
+  const [isClosingAll, setIsClosingAll] = useState(false)
 
   // Page visibility tracking for resource optimization
   const { isVisible, wasHidden, timeSinceHidden } = usePageVisibility()
@@ -459,16 +462,22 @@ export default function Positions() {
   }
 
   const handleCloseAllPositions = async () => {
+    if (closeAllConfirmation !== 'CLOSE ALL') return
+    setIsClosingAll(true)
     try {
       const response = await tradingApi.closeAllPositions()
       if (response.status === 'success') {
-        // Toast handled by close_position_event socket
+        showToast.success(response.message || 'All open positions closed', 'positions')
         fetchPositions(true)
       } else {
         showToast.error(response.message || 'Failed to close all positions', 'positions')
       }
     } catch (_err) {
       showToast.error('Failed to close all positions', 'positions')
+    } finally {
+      setIsClosingAll(false)
+      setCloseAllOpen(false)
+      setCloseAllConfirmation('')
     }
   }
 
@@ -753,7 +762,7 @@ export default function Positions() {
             Export
           </Button>
 
-          <AlertDialog>
+          <AlertDialog open={closeAllOpen} onOpenChange={setCloseAllOpen}>
             <AlertDialogTrigger asChild>
               <Button variant="destructive" size="sm" disabled={stats.total === 0}>
                 <X className="h-4 w-4 mr-2" />
@@ -764,13 +773,31 @@ export default function Positions() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Close All Positions?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will close all {stats.total} open positions at market price. This action
-                  cannot be undone.
+                  This will close all {stats.total} open positions at market price. This action cannot
+                  be undone. Type <strong>CLOSE ALL</strong> to confirm.
                 </AlertDialogDescription>
+                <input
+                  autoFocus
+                  aria-label="Type CLOSE ALL to confirm"
+                  value={closeAllConfirmation}
+                  onChange={(event) => setCloseAllConfirmation(event.target.value)}
+                  placeholder="CLOSE ALL"
+                  disabled={isClosingAll}
+                  className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleCloseAllPositions}>Close All</AlertDialogAction>
+                <AlertDialogCancel disabled={isClosingAll}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={closeAllConfirmation !== 'CLOSE ALL' || isClosingAll}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    void handleCloseAllPositions()
+                  }}
+                >
+                  {isClosingAll && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {isClosingAll ? 'Closing…' : 'Close All'}
+                </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
