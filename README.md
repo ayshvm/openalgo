@@ -159,6 +159,11 @@ Example request body:
  "commission_pct":0.03,"slippage_pct":0.01,"stop_loss_pct":2}}
 ```
 
+For robustness testing, `POST /backtest/api/analyze` adds Monte Carlo trade-order
+shuffling with risk-of-ruin and drawdown percentiles, plus optional walk-forward
+validation using `train_bars` and `test_bars`. This helps distinguish a durable
+edge from a backtest that depends on one lucky sequence of trades.
+
 ### Action Center
 Order approval workflow for manual control:
 - **Auto Mode**: Immediate order execution (for personal trading)
