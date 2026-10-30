@@ -142,6 +142,23 @@ Complete testing environment with ₹1 Crore sandbox capital:
 
 [API Analyzer Documentation](https://docs.openalgo.in/new-features/api-analyzer)
 
+### Historical Backtesting API
+The session-authenticated `POST /backtest/api/run` endpoint runs reproducible OHLCV
+backtests using Historify data (or an inline candle array). It supports fast/slow
+EMA crossover signals, next-bar-open execution, commission, slippage, position
+sizing, stop-loss, take-profit, and maximum holding bars. Results include an equity
+curve, signal series, complete trade log, and metrics such as net return, win rate,
+profit factor, expectancy, maximum drawdown, Sharpe, Sortino, and exposure.
+
+Example request body:
+
+```json
+{"symbol":"RELIANCE","exchange":"NSE","interval":"D",
+ "start_date":"2025-01-01","end_date":"2025-12-31",
+ "config":{"fast_period":20,"slow_period":50,"initial_capital":100000,
+ "commission_pct":0.03,"slippage_pct":0.01,"stop_loss_pct":2}}
+```
+
 ### Action Center
 Order approval workflow for manual control:
 - **Auto Mode**: Immediate order execution (for personal trading)
