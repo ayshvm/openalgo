@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request
 from database.historify_db import get_ohlcv
 from services.backtest_service import BacktestConfig, run_backtest
+from services.backtest_analytics_service import monte_carlo_trade_order, walk_forward_analysis
 from utils.logging import get_logger
 from utils.session import check_session_validity
 
@@ -37,3 +38,32 @@ def run():
     except Exception:
         logger.exception("Backtest failed")
         return jsonify({"status": "error", "message": "Backtest failed"}), 500
+
+
+@backtest_bp.route("/api/analyze", methods=["POST"])
+@check_session_validity
+def analyze():
+    """Run a backtest plus robustness and out-of-sample diagnostics."""
+    payload = request.get_json(silent=True) or {}
+    try:
+        data = payload.get("data")
+        if data is None:
+            symbol, exchange = payload.get("symbol"), payload.get("exchange")
+            if not symbol or not exchange:
+                return jsonify({"status": "error", "message": "Provide data or symbol and exchange"}), 400
+            data = get_ohlcv(str(symbol).upper(), str(exchange).upper(), str(payload.get("interval", "D")), _timestamp(payload.get("start_date")), _timestamp(payload.get("end_date")))
+        config = BacktestConfig(**{key: value for key, value in (payload.get("config") or {}).items() if key in BacktestConfig.__dataclass_fields__})
+        result = run_backtest(data, config)
+        analysis = {"monte_carlo": monte_carlo_trade_order(result["trades"], config.initial_capital,
+                                                            int(payload.get("simulations", 2_000)),
+                                                            float(payload.get("ruin_fraction", 0.5)),
+                                                            int(payload.get("seed", 42)))}
+        train_bars, test_bars = int(payload.get("train_bars", 0)), int(payload.get("test_bars", 0))
+        if train_bars and test_bars:
+            analysis["walk_forward"] = walk_forward_analysis(data, config, train_bars, test_bars)
+        return jsonify({"status": "success", "backtest": result, "analysis": analysis})
+    except (ValueError, TypeError) as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
+    except Exception:
+        logger.exception("Backtest analysis failed")
+        return jsonify({"status": "error", "message": "Backtest analysis failed"}), 500
